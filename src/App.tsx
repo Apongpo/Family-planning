@@ -567,8 +567,10 @@ function App() {
   const [userModalMode, setUserModalMode] = useState<UserModalMode | null>(null)
   const [userModalInput, setUserModalInput] = useState('')
   const [userModalError, setUserModalError] = useState('')
+  const [shouldLoadInsights, setShouldLoadInsights] = useState(false)
   const userDataReadyRef = useRef(false)
   const notifiedReminderIdsRef = useRef<Set<string>>(new Set())
+  const insightsAnchorRef = useRef<HTMLDivElement | null>(null)
 
   const activeUser = useMemo(() => {
     return users.find((user) => user.id === activeUserId) || users[0] || DEFAULT_USER
@@ -705,6 +707,32 @@ function App() {
 
     return () => window.clearTimeout(timer)
   }, [toastMessage])
+
+  useEffect(() => {
+    if (shouldLoadInsights || typeof window === 'undefined') return
+
+    const anchor = insightsAnchorRef.current
+    if (!anchor) return
+
+    if (typeof window.IntersectionObserver === 'undefined') {
+      setShouldLoadInsights(true)
+      return
+    }
+
+    const observer = new window.IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoadInsights(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '320px 0px' },
+    )
+
+    observer.observe(anchor)
+
+    return () => observer.disconnect()
+  }, [shouldLoadInsights])
 
   const recurringEntriesForMonth = useMemo<RecurringMonthlyEntry[]>(() => {
     return recurringItems
@@ -1860,30 +1888,44 @@ function App() {
         )}
       </section>
 
-      <Suspense
-        fallback={
+      <div ref={insightsAnchorRef}>
+        {shouldLoadInsights ? (
+          <Suspense
+            fallback={
+              <section className="insights-grid" aria-label="Charts and summaries">
+                <article className="insight-card">
+                  <div className="panel-header compact">
+                    <h2>Charts Loading</h2>
+                    <span>preparing insights</span>
+                  </div>
+                  <p className="empty-state">Loading charts and summaries.</p>
+                </article>
+              </section>
+            }
+          >
+            <InsightsSection
+              categorySummaryRows={categorySummaryRows}
+              categoryChartData={categoryChartData}
+              cashFlowChartData={cashFlowChartData}
+              memberChartData={memberChartData}
+              memberTotals={memberTotals}
+              formatCurrencyValue={formatCurrencyValue}
+              formatTooltipValue={formatTooltipValue}
+              getCategoryColor={getCategoryColor}
+            />
+          </Suspense>
+        ) : (
           <section className="insights-grid" aria-label="Charts and summaries">
             <article className="insight-card">
               <div className="panel-header compact">
-                <h2>Charts Loading</h2>
-                <span>preparing insights</span>
+                <h2>Charts Ready</h2>
+                <span>loads when you reach this section</span>
               </div>
-              <p className="empty-state">Loading charts and summaries.</p>
+              <p className="empty-state">Scroll a bit further to load charts and summaries.</p>
             </article>
           </section>
-        }
-      >
-        <InsightsSection
-          categorySummaryRows={categorySummaryRows}
-          categoryChartData={categoryChartData}
-          cashFlowChartData={cashFlowChartData}
-          memberChartData={memberChartData}
-          memberTotals={memberTotals}
-          formatCurrencyValue={formatCurrencyValue}
-          formatTooltipValue={formatTooltipValue}
-          getCategoryColor={getCategoryColor}
-        />
-      </Suspense>
+        )}
+      </div>
 
       <section className="budget-panel" aria-label="Budget breakdown by category">
         <h2>Budget by Category</h2>
