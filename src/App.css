@@ -375,6 +375,17 @@ select {
   font-weight: 700;
 }
 
+.inline-toast {
+  margin: -8px 0 18px;
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(30, 58, 138, 0.1);
+}
+
 .next-reminder {
   margin-bottom: 12px;
   color: #334155;

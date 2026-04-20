@@ -57,6 +57,9 @@ type RecurringItem = {
   kind: RecurringKind
   frequency: Recurrence
   startDate: string
+  endDate?: string
+  isPaused?: boolean
+  skippedOccurrences?: string[]
   person: string
   expenseCategory?: ExpenseCategory
   incomeCategory?: IncomeCategory
@@ -84,6 +87,8 @@ type RecurringFormState = {
   kind: RecurringKind
   frequency: Recurrence
   startDate: string
+  endDate: string
+  isPaused: boolean
   person: string
   expenseCategory: ExpenseCategory
   incomeCategory: IncomeCategory
@@ -91,6 +96,7 @@ type RecurringFormState = {
 
 type RecurringMonthlyEntry = RecurringItem & {
   occurrences: number
+  occurrenceDates: string[]
   totalAmount: number
 }
 
@@ -309,6 +315,8 @@ function createEmptyRecurring(): RecurringFormState {
     kind: 'Expense',
     frequency: 'Monthly',
     startDate: dateStr,
+    endDate: '',
+    isPaused: false,
     person: '',
     expenseCategory: 'Other',
     incomeCategory: 'Salary',
@@ -366,34 +374,6 @@ function formatTooltipValue(value: string | number | readonly (string | number)[
 
 function sortByDateDesc<T extends { date: string }>(entries: T[]): T[] {
   return [...entries].sort((left, right) => toDate(right.date).getTime() - toDate(left.date).getTime())
-}
-
-function getRecurrenceCountForMonth(item: RecurringItem, monthKey: string): number {
-  const monthStart = new Date(`${monthKey}-01T00:00:00`)
-  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0)
-  const startDate = toDate(item.startDate)
-
-  if (startDate > monthEnd) {
-    return 0
-  }
-
-  if (item.frequency === 'Monthly') {
-    return 1
-  }
-
-  if (item.frequency === 'Yearly') {
-    return startDate.getMonth() === monthStart.getMonth() && startDate <= monthEnd ? 1 : 0
-  }
-
-  let occurrences = 0
-  const cursor = new Date(startDate)
-  while (cursor <= monthEnd) {
-    if (cursor >= monthStart) {
-      occurrences += 1
-    }
-    cursor.setDate(cursor.getDate() + 7)
-  }
-  return occurrences
 }
 
 function formatRecurrence(value: Recurrence): string {
@@ -459,20 +439,31 @@ function addMonths(date: Date, count: number): Date {
 }
 
 function getRecurringOccurrencesInRange(item: RecurringItem, start: Date, end: Date): string[] {
-  const startDate = toDate(item.startDate)
-  if (startDate > end) {
+  if (item.isPaused) {
     return []
   }
 
+  const startDate = toDate(item.startDate)
+  const itemEndDate = item.endDate ? toDate(item.endDate) : null
   const normalizedStart = new Date(start.getFullYear(), start.getMonth(), start.getDate())
   const normalizedEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+  const effectiveEnd = itemEndDate && itemEndDate < normalizedEnd ? itemEndDate : normalizedEnd
+
+  if (startDate > effectiveEnd) {
+    return []
+  }
+
+  const skippedDates = new Set(item.skippedOccurrences || [])
   const occurrences: string[] = []
 
   if (item.frequency === 'Weekly') {
     const cursor = new Date(startDate)
-    while (cursor <= normalizedEnd) {
+    while (cursor <= effectiveEnd) {
       if (cursor >= normalizedStart) {
-        occurrences.push(dateToIsoDate(cursor))
+        const isoDate = dateToIsoDate(cursor)
+        if (!skippedDates.has(isoDate)) {
+          occurrences.push(isoDate)
+        }
       }
       cursor.setDate(cursor.getDate() + 7)
     }
@@ -482,9 +473,12 @@ function getRecurringOccurrencesInRange(item: RecurringItem, start: Date, end: D
   if (item.frequency === 'Monthly') {
     const anchorDay = startDate.getDate()
     let cursor = new Date(startDate)
-    while (cursor <= normalizedEnd) {
+    while (cursor <= effectiveEnd) {
       if (cursor >= normalizedStart) {
-        occurrences.push(dateToIsoDate(cursor))
+        const isoDate = dateToIsoDate(cursor)
+        if (!skippedDates.has(isoDate)) {
+          occurrences.push(isoDate)
+        }
       }
       cursor = addMonthsClamped(cursor, 1, anchorDay)
     }
@@ -494,9 +488,12 @@ function getRecurringOccurrencesInRange(item: RecurringItem, start: Date, end: D
   const anchorMonth = startDate.getMonth()
   const anchorDay = startDate.getDate()
   let cursor = new Date(startDate)
-  while (cursor <= normalizedEnd) {
+  while (cursor <= effectiveEnd) {
     if (cursor >= normalizedStart) {
-      occurrences.push(dateToIsoDate(cursor))
+      const isoDate = dateToIsoDate(cursor)
+      if (!skippedDates.has(isoDate)) {
+        occurrences.push(isoDate)
+      }
     }
     cursor = addYearsClamped(cursor, 1, anchorMonth, anchorDay)
   }
@@ -567,6 +564,7 @@ function App() {
   const [alarmEnabled, setAlarmEnabled] = useState(true)
   const [reminderLeadDays, setReminderLeadDays] = useState(3)
   const [activeAlarmText, setActiveAlarmText] = useState<string | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
   const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null)
   const [editingRecurringId, setEditingRecurringId] = useState<string | null>(null)
@@ -709,13 +707,27 @@ function App() {
     )
   }, [activeUser.id, alarmEnabled, reminderLeadDays])
 
+  useEffect(() => {
+    if (!toastMessage) return
+
+    const timer = window.setTimeout(() => {
+      setToastMessage(null)
+    }, 2200)
+
+    return () => window.clearTimeout(timer)
+  }, [toastMessage])
+
   const recurringEntriesForMonth = useMemo<RecurringMonthlyEntry[]>(() => {
     return recurringItems
       .map((item) => {
-        const occurrences = getRecurrenceCountForMonth(item, selectedMonth)
+        const monthStart = new Date(`${selectedMonth}-01T00:00:00`)
+        const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0)
+        const occurrenceDates = getRecurringOccurrencesInRange(item, monthStart, monthEnd)
+        const occurrences = occurrenceDates.length
         return {
           ...item,
           occurrences,
+          occurrenceDates,
           totalAmount: occurrences * item.amount,
         }
       })
@@ -1109,6 +1121,8 @@ function App() {
       kind: item.kind,
       frequency: item.frequency,
       startDate: item.startDate,
+      endDate: item.endDate || '',
+      isPaused: item.isPaused || false,
       person: item.person,
       expenseCategory: item.expenseCategory || 'Other',
       incomeCategory: item.incomeCategory || 'Salary',
@@ -1389,6 +1403,15 @@ function App() {
       return
     }
 
+    if (recurringFormState.endDate && recurringFormState.endDate < recurringFormState.startDate) {
+      window.alert('End date must be on or after the start date.')
+      return
+    }
+
+    const existingItem = editingRecurringId
+      ? recurringItems.find((item) => item.id === editingRecurringId)
+      : undefined
+
     const nextItem: RecurringItem = {
       id: editingRecurringId || `recurring-${Date.now()}`,
       label: recurringFormState.label.trim(),
@@ -1396,6 +1419,9 @@ function App() {
       kind: recurringFormState.kind,
       frequency: recurringFormState.frequency,
       startDate: recurringFormState.startDate,
+      endDate: recurringFormState.endDate || undefined,
+      isPaused: recurringFormState.isPaused,
+      skippedOccurrences: existingItem?.skippedOccurrences || [],
       person: recurringFormState.person.trim(),
       expenseCategory:
         recurringFormState.kind === 'Expense' ? recurringFormState.expenseCategory : undefined,
@@ -1440,6 +1466,59 @@ function App() {
     if (editingRecurringId === id) {
       resetRecurringForm()
     }
+  }
+
+  function toggleRecurringPaused(id: string) {
+    setRecurringItems((previous) =>
+      previous.map((item) => {
+        if (item.id !== id) return item
+        return {
+          ...item,
+          isPaused: !item.isPaused,
+        }
+      }),
+    )
+  }
+
+  function skipNextOccurrence(itemId: string, occurrenceDates: string[]) {
+    const nextOccurrence = occurrenceDates[0]
+    if (!nextOccurrence) {
+      window.alert('No upcoming occurrence to skip in the selected month.')
+      return
+    }
+
+    setRecurringItems((previous) =>
+      previous.map((item) => {
+        if (item.id !== itemId) return item
+
+        const skippedOccurrences = new Set(item.skippedOccurrences || [])
+        skippedOccurrences.add(nextOccurrence)
+
+        return {
+          ...item,
+          skippedOccurrences: Array.from(skippedOccurrences).sort(),
+        }
+      }),
+    )
+
+    setToastMessage(`Skipped next occurrence on ${toLocalDate(nextOccurrence)}.`)
+  }
+
+  function undoSkippedOccurrence(itemId: string, occurrenceDate: string) {
+    setRecurringItems((previous) =>
+      previous.map((item) => {
+        if (item.id !== itemId) return item
+
+        const remainingSkipped = (item.skippedOccurrences || []).filter((date) => date !== occurrenceDate)
+
+        return {
+          ...item,
+          skippedOccurrences: remainingSkipped.length > 0 ? remainingSkipped : undefined,
+        }
+      }),
+    )
+
+    setToastMessage(`Restored occurrence on ${toLocalDate(occurrenceDate)}.`)
   }
 
   function beginEditBudget(category: ExpenseCategory) {
@@ -1555,6 +1634,12 @@ function App() {
           <p className="subtitle small-subtitle">Active profile: {activeUser.name}</p>
         </div>
       </header>
+
+      {toastMessage && (
+        <div className="inline-toast" role="status" aria-live="polite">
+          {toastMessage}
+        </div>
+      )}
 
       <section className="budget-top-bar" aria-label="Month and member controls">
         <div className="month-selector">
@@ -2310,6 +2395,24 @@ function App() {
             </label>
 
             <label>
+              End Date (optional)
+              <input
+                type="date"
+                value={recurringFormState.endDate}
+                onChange={(event) => updateRecurringForm('endDate', event.target.value)}
+              />
+            </label>
+
+            <label className="switch-label">
+              <input
+                type="checkbox"
+                checked={recurringFormState.isPaused}
+                onChange={(event) => updateRecurringForm('isPaused', event.target.checked)}
+              />
+              Paused
+            </label>
+
+            <label>
               Household Member
               <input
                 value={recurringFormState.person}
@@ -2367,6 +2470,14 @@ function App() {
         <div className="budget-list">
           {recurringItems.map((item) => {
             const monthlyImpact = recurringEntriesForMonth.find((entry) => entry.id === item.id)
+            const selectedMonthStart = new Date(`${selectedMonth}-01T00:00:00`)
+            const selectedMonthEnd = new Date(
+              selectedMonthStart.getFullYear(),
+              selectedMonthStart.getMonth() + 1,
+              0,
+            )
+            const remainingDatesInMonth = getRecurringOccurrencesInRange(item, selectedMonthStart, selectedMonthEnd)
+            const skippedDates = [...(item.skippedOccurrences || [])].sort()
 
             return (
               <article key={item.id} className="budget-item recurring-item-card">
@@ -2381,6 +2492,21 @@ function App() {
                     <button type="button" className="edit-btn" onClick={() => beginEditRecurring(item)}>
                       Edit
                     </button>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => toggleRecurringPaused(item.id)}
+                    >
+                      {item.isPaused ? 'Resume' : 'Pause'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => skipNextOccurrence(item.id, remainingDatesInMonth)}
+                      disabled={remainingDatesInMonth.length === 0 || !!item.isPaused}
+                    >
+                      Skip Next
+                    </button>
                     <button type="button" className="delete-btn" onClick={() => deleteRecurringItem(item.id)}>
                       Delete
                     </button>
@@ -2394,12 +2520,30 @@ function App() {
                       ? item.expenseCategory || 'Other'
                       : item.incomeCategory || 'Other Income'}
                   </span>
+                  <span>{item.endDate ? `ends ${toLocalDate(item.endDate)}` : 'no end date'}</span>
+                  <span>{item.isPaused ? 'paused' : 'active'}</span>
                   <span>
                     {monthlyImpact
                       ? `${monthlyImpact.occurrences} hit(s) this month, ${formatCurrencyValue(monthlyImpact.totalAmount)} total`
                       : 'No occurrence in selected month'}
                   </span>
                 </p>
+                {skippedDates.length > 0 && (
+                  <div className="reminder-list">
+                    {skippedDates.map((date) => (
+                      <div key={`${item.id}-${date}`} className="expense-actions">
+                        <span className="entry-chip">Skipped {toLocalDate(date)}</span>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => undoSkippedOccurrence(item.id, date)}
+                        >
+                          Undo Skip
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </article>
             )
           })}
