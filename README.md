@@ -1,73 +1,47 @@
-# React + TypeScript + Vite
+# Family Planning App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Family Planning App is a React and TypeScript household budget tracker for recording expenses, income, recurring plans, budgets, reminders, and member-level monthly summaries.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Track one-time expenses and income by household member
+- Create recurring expenses or income with pause and skip controls
+- Review monthly budget usage by category
+- Export filtered monthly activity to CSV
+- Get reminder and notification support for upcoming items
+- Switch between separate local user profiles
 
-## React Compiler
+## Local Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Production Build
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+The production build output is generated in `dist/`.
+
+## GitHub Pages Deployment
+
+This repository is configured to deploy to GitHub Pages from GitHub Actions.
+
+Expected site URL:
+
+`https://apongpo.github.io/Family-planning/`
+
+To enable Pages in the repository:
+
+1. Open the repository on GitHub.
+2. Go to `Settings` > `Pages`.
+3. Under `Build and deployment`, choose `GitHub Actions` as the source.
+4. Push to `main` and wait for the `Deploy to GitHub Pages` workflow to finish.
+
+## Notes
+
+- App data is stored in the browser with `localStorage`.
+- Notifications and alarm sound depend on browser support and permission settings.
