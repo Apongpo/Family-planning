@@ -864,15 +864,6 @@ function App() {
       .sort((left, right) => right.amount - left.amount)
   }, [categoryTotals, totalSpent])
 
-  const categoryChartData = useMemo(() => {
-    return categorySummaryRows.map((row) => ({
-      name: row.category,
-      value: row.amount,
-      share: row.share,
-      color: getCategoryColor(row.category),
-    }))
-  }, [categorySummaryRows])
-
   const memberOptions = useMemo(() => {
     const members = new Set<string>()
     expenses.forEach((expense) => members.add(expense.person))
@@ -993,14 +984,6 @@ function App() {
       { name: 'Budget', amount: totalBudget, color: '#f59e0b' },
     ]
   }, [totalBudget, totalIncome, totalSpent])
-
-  const memberChartData = useMemo(() => {
-    return memberTotals.map((row) => ({
-      name: row.member,
-      income: row.income,
-      spent: row.spent,
-    }))
-  }, [memberTotals])
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>()
@@ -1905,9 +1888,7 @@ function App() {
           >
             <InsightsSection
               categorySummaryRows={categorySummaryRows}
-              categoryChartData={categoryChartData}
               cashFlowChartData={cashFlowChartData}
-              memberChartData={memberChartData}
               memberTotals={memberTotals}
               formatCurrencyValue={formatCurrencyValue}
               formatTooltipValue={formatTooltipValue}
@@ -1916,13 +1897,19 @@ function App() {
           </Suspense>
         ) : (
           <section className="insights-grid" aria-label="Charts and summaries">
-            <article className="insight-card">
-              <div className="panel-header compact">
-                <h2>Charts Ready</h2>
-                <span>loads when you reach this section</span>
-              </div>
-              <p className="empty-state">Scroll a bit further to load charts and summaries.</p>
-            </article>
+            {Array.from({ length: 3 }).map((_, index) => (
+              <article key={index} className="insight-card skeleton-card" aria-hidden="true">
+                <div className="panel-header compact skeleton-header">
+                  <div className="skeleton-block skeleton-title" />
+                  <div className="skeleton-block skeleton-pill" />
+                </div>
+                <div className="skeleton-stack">
+                  <div className="skeleton-block skeleton-chart" />
+                  <div className="skeleton-block skeleton-line" />
+                  <div className="skeleton-block skeleton-line short" />
+                </div>
+              </article>
+            ))}
           </section>
         )}
       </div>
